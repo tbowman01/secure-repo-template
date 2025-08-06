@@ -1,8 +1,11 @@
 name: Publish docs to Wiki
 
 on:
-  workworkflow_dispatch:
-  pullpull_request: [main]
+  workflow_run:
+  pull_request:
+    branches: [main]
+    paths:
+      - wiki/**
   push:
     branches: [main]
     paths:
