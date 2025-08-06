@@ -23,6 +23,6 @@ jobs:
       - name: Sync wiki
         uses: newrelic/wiki-sync-action@v3
         with:
-          source: wiki
+          source: docs
           destination: wiki
           token: ${{ secrets.GITHUB_TOKEN }}
