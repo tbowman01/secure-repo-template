@@ -1,4 +1,4 @@
-# Secure Supply Chain Scanner Template
+# Secure Repository Template
 
 This repository provides a ready‑to‑use template for building secure software projects on GitHub.  It combines an AI‑driven product requirements workflow with a comprehensive set of security and compliance checks.  Use this template to bootstrap new projects with built‑in scanning, CI/CD automation, and developer tooling.
 
