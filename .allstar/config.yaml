@@ -1,0 +1,14 @@
+enable: true
+policies:
+  branch_protection:
+    enforce: true
+  outside_collaborators:
+    enforce: true
+  binary_artifacts:
+    enforce: true
+  secrets:
+    enforce: true
+  issue_template:
+    enforce: true
+  security_policy:
+    enforce: true

@@ -1,0 +1,205 @@
+name: Generate PRD & Security Scans
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  security-events: write
+
+jobs:
+  analyze-and-generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude-Flow
+        run: npm install -g claude-flow
+
+      - name: Run orchestrator
+        run: |
+          npx claude-flow task orchestrate \
+            --file orchestrate-workflow.js \
+            --strategy balanced \
+            --max-concurrent 8
+
+      - name: Commit generated PRD
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add docs/product_requirements.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update auto-generated product requirements"
+            git push
+          fi
+
+  sca-scan:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.16.0
+
+      - name: Run SCA with Syft
+        run: |
+          set -e
+          mkdir -p artifacts
+          syft dir:. -o json > artifacts/sca.json
+
+      - name: Upload SCA results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-results
+          path: artifacts/sca.json
+
+  sast-codeql:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
+  sbom-job:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.16.0
+
+      - name: Generate SBOM
+        run: |
+          set -e
+          mkdir -p artifacts
+          syft dir:. -o spdx-json > artifacts/sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: artifacts/sbom.spdx.json
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 -o gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      - name: Install trufflehog
+        run: |
+          python -m pip install --upgrade pip
+          pip install trufflehog
+
+      - name: Run Gitleaks
+        run: |
+          set -e
+          mkdir -p artifacts
+          gitleaks detect --source . --report-format json --report-path artifacts/gitleaks.json || { echo "gitleaks detected secrets"; exit 1; }
+
+      - name: Run TruffleHog
+        run: |
+          set -e
+          trufflehog filesystem . --json > artifacts/trufflehog.json || { echo "trufflehog detected secrets"; exit 1; }
+
+      - name: Upload Secrets Scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: secrets-scan
+          path: |
+            artifacts/gitleaks.json
+            artifacts/trufflehog.json
+
+  owasp-dep-scan:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/action@v2
+        with:
+          project: "secure-repo-template"
+          path: "."
+          format: "JSON"
+          out: "artifacts/owasp"
+
+      - name: Upload OWASP report
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-dependency-check
+          path: artifacts/owasp/dependency-check-report.json
+
+  trivy-scan:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          version: latest
+
+      - name: Run Trivy filesystem scan
+        run: |
+          set -e
+          mkdir -p artifacts
+          trivy fs . --format json --output artifacts/trivy-results.json || { echo "trivy detected vulnerabilities"; exit 1; }
+
+      - name: Create GitHub issue on high severity findings
+        run: |
+          if jq -e '.Results[].Vulnerabilities[] | select(.Severity=="CRITICAL" or .Severity=="HIGH")' artifacts/trivy-results.json > /dev/null; then
+            echo "Creating GitHub issue for high/critical vulnerabilities"
+            gh issue create \
+              --title "Critical or High severity vulnerabilities detected by Trivy" \
+              --body "Trivy detected critical/high severity vulnerabilities in the repository.  See the attached artefacts in this action run for details." \
+              --repo "${{ github.repository }}"
+          else
+            echo "No critical/high findings; no issue created."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Trivy results
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan
+          path: artifacts/trivy-results.json

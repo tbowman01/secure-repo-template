@@ -1,0 +1,6 @@
+# This file designates code owners for the repository.
+# Use GitHub usernames or teams to automatically request reviews.
+
+* @tbowman01
+docs/ @tbowman01
+.github/workflows/ @tbowman01

@@ -1,0 +1,10 @@
+checks:
+  Branch-Protection: true
+  Code-Review: true
+  Dangerous-Workflow: true
+  Pinned-Dependencies: true
+  Signed-Releases: true
+  Token-Permissions: true
+  Vulnerabilities: true
+policy:
+  minimalPassingScore: 7
