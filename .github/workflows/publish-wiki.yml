@@ -1,7 +1,8 @@
+---
 name: Publish docs to Wiki
 
-on:
-  workflow_dispatch:
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:  # yamllint disable-line rule:truthy
   pull_request:
     branches: [main]
     paths:
@@ -18,27 +19,10 @@ jobs:
   publish-wiki:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Sync wiki
+        uses: newrelic/wiki-sync-action@v3
         with:
-          path: repo
-
-      - name: Checkout wiki
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository }}.wiki
-          path: wiki-repo
-
-      - name: Sync wiki files
-        run: |
-          rsync -av --delete repo/wiki/ wiki-repo/
-          cd wiki-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "actions@github.com"
-          git add .
-          if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Update wiki from repo"
-            git push
-          else
-            echo "No wiki changes to commit"
-          fi
+          source: wiki
+          destination: wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
